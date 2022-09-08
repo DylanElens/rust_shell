@@ -1,4 +1,4 @@
-use std::process::Command;
+use std::{process::Command, result};
 
 #[derive(Debug)]
 struct UserCommand {
@@ -8,7 +8,6 @@ struct UserCommand {
 #[derive(Debug)]
 struct Expression {
     commands: Vec<UserCommand>,
-    operator: String,
     input_from_file: Option<String>,
     output_to_file: Option<String>,
     background: bool,
@@ -94,13 +93,30 @@ fn parseToExpression(s: &str) -> Expression {
 fn executeExpression(expression: &Expression) {
     // TODO
     // 1. Fork
+    let mut result: result::Result<(), String>;
     for command in &expression.commands {
-        let mut child = Command::new(&command.args[0])
-            .arg(&command.args[1])
-            .spawn()
-            .expect("failed to execute child");
-        let ecode = child.wait().expect("failed to wait on child");
-        print!("child exited with code: {}", ecode);
+        if expression.background {
+            result = Command::new(&command.args[0])
+                .args(&command.args[1..])
+                .spawn()
+                .map(|_| ())
+                .map_err(|e| e.to_string());
+        } else {
+            result = Command::new(&command.args[0])
+                .args(&command.args[1..])
+                .status()
+                .map(|_| ())
+                .map_err(|e| e.to_string());
+        }
+        match result {
+            Ok(_) => {
+                println!("Command executed successfully");
+            }
+            Err(e) => {
+                println!("Error: {}", e);
+                break;
+            }
+        }
     }
     // 2. Child process: execvp
     // 3. Parent process: waitpid
