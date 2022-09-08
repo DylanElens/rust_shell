@@ -1,3 +1,4 @@
+use std::io::{stdin, stdout, Write};
 use std::{process::Command, result};
 
 #[derive(Debug)]
@@ -11,28 +12,6 @@ struct Expression {
     input_from_file: Option<String>,
     output_to_file: Option<String>,
     background: bool,
-}
-
-fn split_string_to_args(s: &str) -> Vec<String> {
-    let mut args = Vec::new();
-    let mut current_arg = String::new();
-    let mut in_quotes = false;
-    for c in s.chars() {
-        if c == '"' {
-            in_quotes = !in_quotes;
-        } else if c == ' ' && !in_quotes {
-            if current_arg.len() > 0 {
-                args.push(current_arg);
-                current_arg = String::new();
-            }
-        } else {
-            current_arg.push(c);
-        }
-    }
-    if current_arg.len() > 0 {
-        args.push(current_arg);
-    }
-    return args;
 }
 
 fn parseToExpression(s: &str) -> Expression {
@@ -91,8 +70,6 @@ fn parseToExpression(s: &str) -> Expression {
 }
 
 fn executeExpression(expression: &Expression) {
-    // TODO
-    // 1. Fork
     let mut result: result::Result<(), String>;
     for command in &expression.commands {
         if expression.background {
@@ -102,12 +79,15 @@ fn executeExpression(expression: &Expression) {
                 .map(|_| ())
                 .map_err(|e| e.to_string());
         } else {
-            result = Command::new(&command.args[0])
-                .args(&command.args[1..])
+            println!("{:?}", &command);
+            println!("{:?}", &command);
+            result = Command::new(&command.args[0].trim_end())
+                .args(&command.args[1..].into_iter().map(|arg| arg.trim_end()))
                 .status()
                 .map(|_| ())
                 .map_err(|e| e.to_string());
         }
+
         match result {
             Ok(_) => {
                 println!("Command executed successfully");
@@ -118,6 +98,8 @@ fn executeExpression(expression: &Expression) {
             }
         }
     }
+    // TODO
+    // 1. Fork
     // 2. Child process: execvp
     // 3. Parent process: waitpid
     // 4. Handle input/output redirection
@@ -130,8 +112,11 @@ fn executeExpression(expression: &Expression) {
 
 fn main() {
     let mut input = String::new();
-    std::io::stdin().read_line(&mut input).unwrap();
+    print!("$ ");
+    let _ = stdout().flush();
+    stdin()
+        .read_line(&mut input)
+        .expect("Did not enter a correct string");
     let args: Expression = parseToExpression(&input);
     executeExpression(&args);
-    println!("{:?}", args);
 }
