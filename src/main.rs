@@ -79,10 +79,8 @@ fn executeExpression(expression: &Expression) {
                 .map(|_| ())
                 .map_err(|e| e.to_string());
         } else {
-            println!("{:?}", &command);
-            println!("{:?}", &command);
             result = Command::new(&command.args[0].trim_end())
-                .args(&command.args[1..].into_iter().map(|arg| arg.trim_end()))
+                .args(command.args[1..].into_iter().map(|arg| arg.trim_end()))
                 .status()
                 .map(|_| ())
                 .map_err(|e| e.to_string());
@@ -112,11 +110,25 @@ fn executeExpression(expression: &Expression) {
 
 fn main() {
     let mut input = String::new();
-    print!("$ ");
-    let _ = stdout().flush();
-    stdin()
-        .read_line(&mut input)
-        .expect("Did not enter a correct string");
-    let args: Expression = parseToExpression(&input);
-    executeExpression(&args);
+    let current_dir = std::env::current_dir().unwrap();
+    loop {
+        print!("{}$ ", current_dir.display());
+        stdout().flush().unwrap();
+        stdin().read_line(&mut input).unwrap();
+
+        if input.trim_end() == "exit" {
+            break;
+        }
+
+        let expression = parseToExpression(&input);
+        executeExpression(&expression);
+        input.clear();
+    }
+    // print!("$ ");
+    // let _ = stdout().flush();
+    // stdin()
+    //     .read_line(&mut input)
+    //     .expect("Did not enter a correct string");
+    // let args: Expression = parseToExpression(&input);
+    // executeExpression(&args);
 }
