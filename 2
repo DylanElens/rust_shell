@@ -1,0 +1,135 @@
+use std::io::{stdin, stdout, Write};
+use std::{process::Command, result};
+
+#[derive(Debug)]
+struct UserCommand {
+    args: Vec<String>,
+}
+
+#[derive(Debug)]
+struct Expression {
+    commands: Vec<UserCommand>,
+    input_from_file: Option<String>,
+    output_to_file: Option<String>,
+    background: bool,
+}
+
+fn parseToExpression(s: &str) -> Expression {
+    let mut commands = Vec::new();
+    let mut input_from_file = None;
+    let mut output_to_file = None;
+    let mut background = false;
+    let mut current_command = UserCommand { args: Vec::new() };
+    let mut current_arg = String::new();
+    //commands are separated by | or &
+    //args are separated by spaces
+    for c in s.chars() {
+        match c {
+            '|' => {
+                current_command.args.push(current_arg);
+                current_arg = String::new();
+                commands.push(current_command);
+                current_command = UserCommand { args: Vec::new() };
+            }
+            '&' => {
+                println!("pushing command {:?}", current_command);
+                current_command.args.push(current_arg);
+                current_arg = String::new();
+                commands.push(current_command);
+                current_command = UserCommand { args: Vec::new() };
+                background = true;
+            }
+            ' ' => {
+                current_command.args.push(current_arg);
+                current_arg = String::new();
+            }
+            '<' => {
+                current_command.args.push(current_arg);
+                current_arg = String::new();
+                commands.push(current_command);
+                current_command = UserCommand { args: Vec::new() };
+                input_from_file = Some(String::new());
+            }
+            '>' => {
+                current_command.args.push(current_arg);
+                current_arg = String::new();
+                commands.push(current_command);
+                current_command = UserCommand { args: Vec::new() };
+                output_to_file = Some(String::new());
+            }
+            _ => {
+                if input_from_file.is_some() {
+                    input_from_file.as_mut().unwrap().push(c);
+                } else if output_to_file.is_some() {
+                    output_to_file.as_mut().unwrap().push(c);
+                } else {
+                    current_arg.push(c);
+                }
+            }
+        }
+    }
+
+    return Expression {
+        commands,
+        input_from_file,
+        output_to_file,
+        background,
+    };
+}
+
+fn executeExpression(expression: &Expression) {
+    let mut result: result::Result<(), String>;
+    println!("{:?}", expression);
+    for command in &expression.commands {
+        if expression.background {
+            result = Command::new(&command.args[0])
+                .args(command.args[1..].into_iter().map(|arg| arg.trim_end()))
+                .spawn()
+                .map(|_| ())
+                .map_err(|e| e.to_string());
+
+        } else {
+            result = Command::new(&command.args[0].trim_end())
+                .args(command.args[1..].into_iter().map(|arg| arg.trim_end()))
+                .status()
+                .map(|_| ())
+                .map_err(|e| e.to_string());
+        }
+
+        match result {
+            Ok(_) => {}
+            Err(e) => {
+                println!("Error: {}", e);
+                break;
+            }
+        }
+    }
+    // TODO
+    // 1. Fork
+    // 2. Child process: execvp
+    // 3. Parent process: waitpid
+    // 4. Handle input/output redirection
+    // 5. Handle background process
+    // 6. Handle pipe
+    // 7. Handle error
+    // 8. Handle exit
+    // 9. Handle cd
+}
+
+fn main() {
+    let mut input = String::new();
+    let current_dir = std::env::current_dir().unwrap();
+    loop {
+        print!("{}$ ", current_dir.display());
+        stdout().flush().unwrap();
+        stdin().read_line(&mut input).unwrap();
+
+        if input.trim_end() == "exit" {
+            break;
+        }
+
+        let expression = parseToExpression(&input);
+        executeExpression(&expression);
+        input.clear();
+    }
+}

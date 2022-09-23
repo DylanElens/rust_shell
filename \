@@ -1,0 +1,211 @@
+use std::io::{stdin, stdout, Read, Write};
+use std::{process::Command, process::Stdio, result};
+
+#[derive(Debug)]
+struct UserCommand {
+    args: Vec<String>,
+}
+
+#[derive(Debug)]
+struct Expression {
+    commands: Vec<UserCommand>,
+    input_from_file: Option<String>,
+    output_to_file: Option<String>,
+    background: bool,
+}
+static PANGRAM: &'static str = "the quick brown fox jumped over the lazy dog\n";
+fn parse_to_expression(s: &str) -> Vec<Expression> {
+    //ls -l is one command
+    //ls -l | wc -l  1 expression
+    let mut expressions = Vec::new();
+    let mut commands = Vec::new();
+    let mut input_from_file = None;
+    let mut output_to_file = None;
+    let mut background = false;
+    for token in s.split_whitespace() {
+        if token == "|" {
+            expressions.push(Expression {
+                commands,
+                input_from_file,
+                output_to_file,
+                background,
+            });
+            commands = Vec::new();
+            input_from_file = None;
+            output_to_file = None;
+            background = false;
+        } else if token == "<" {
+            input_from_file = Some(String::new());
+        } else if token == ">" {
+            output_to_file = Some(String::new());
+        } else if token == "&" {
+            background = true;
+        } else if input_from_file.is_some() {
+            input_from_file = Some(token.to_string());
+        } else if output_to_file.is_some() {
+            output_to_file = Some(token.to_string());
+        } else {
+            commands.push(UserCommand {
+                args: token.split_whitespace().map(|s| s.to_string()).collect(),
+            });
+        }
+    }
+    expressions.push(Expression {
+        commands,
+        input_from_file,
+        output_to_file,
+        background,
+    });
+}
+//if we have a command like ls -l | wc -l
+//we need to run ls -l and then pipe the output to wc -l
+//that measn Expression 1 will have background = false
+//
+//
+//
+//
+fn execute_expression(expressions: Vec<Expression>) -> result::Result<(), String> {
+    let mut previous_output: Option<Vec<u8>> = None;
+    for expression in expressions {
+        // println!("expression: {:?}", expression);
+         
+        //if we have a prevous output we will pipe it to the current command
+        if let Some(output) = &previous_output {
+            // println!("output: {:?}", String::from_utf8_lossy(output));
+
+            //we want to spawn the command and open the pipe
+            let mut child = Command::new(&expression.commands[0].args[0])
+                .args(&expression.commands[0].args[1..])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .spawn()
+                .expect("failed to execute process");
+
+            //write the previous output to the pipe
+            match child.stdin.as_mut() {
+                Some(stdin) => {
+                    println!("writing to stdin: {:?}", &output);
+                    stdin.write_all(output).expect("failed to write to stdin");
+                }
+                None => {
+                    return Err("failed to open stdin".to_string());
+                }
+            }
+
+            //read the output of the command
+            let result = child.wait_with_output().expect("failed to wait on child");
+            println!("output: {:?}", result.stdout);
+            previous_output = None;
+        }
+
+
+        //if we have a command where the background is false than it is piped
+        if !expression.background {
+            let child = Command::new(&expression.commands[0].args[0])
+                .args(&expression.commands[0].args[1..])
+                .spawn()
+                .expect("failed to execute process");
+
+            //we want to get the result of the command and store it in previous_output
+            let output = child.wait_with_output().expect("failed to wait on child");
+            previous_output = Some(output.stdout);
+            // println!("previous_output: ", previous_output);
+        }
+
+        //if we have a command where the background is true than it is not piped and we just run the command
+        if expression.background {
+            let child = Command::new(&expression.commands[0].args[0])
+                .args(&expression.commands[0].args[1..])
+                .output()
+                .unwrap()
+                .stdout;
+            println!("{}", String::from_utf8_lossy(&child));
+        }
+    }
+    // let process = match Command::new("wc")
+    //     .stdin(Stdio::piped())
+    //     .stdout(Stdio::piped())
+    //     .spawn()
+    // {
+    //     Err(why) => panic!("couldn't spawn wc: {}", why),
+    //     Ok(process) => process,
+    // };
+    //
+    // match process.stdin.unwrap().write_all(PANGRAM.as_bytes()) {
+    //     Err(why) => panic!("couldn't write to wc stdin: {}", why),
+    //     Ok(_) => println!("sent pangram to wc"),
+    // }
+    //
+    // let mut s = String::new();
+    //
+    // match process.stdout.unwrap().read_to_string(&mut s) {
+    //     Err(why) => panic!("couldn't read wc stdout: {}", why),
+    //     Ok(_) => print!("wc responded with:\n{}", s),
+    // }
+    //
+    return Ok(());
+}
+
+// fn executeExpression(expression: &Expression) {
+//     let mut result: result::Result<(), String>;
+//     for command in &expression.commands {
+//         if expression.background {
+//             result = Command::new(&command.args[0])
+//                 .args(&command.args[1..])
+//                 .spawn()
+//                 .map(|_| ())
+//                 .map_err(|e| e.to_string());
+//         } else {
+//             result = Command::new(&command.args[0].trim_end())
+//                 .args(command.args[1..].into_iter().map(|arg| arg.trim_end()))
+//                 .status()
+//                 .map(|_| ())
+//                 .map_err(|e| e.to_string());
+//         }
+//
+//         match result {
+//             Ok(_) => {
+//                 println!("Command executed successfully");
+//             }
+//             Err(e) => {
+//                 println!("Error: {}", e);
+//                 break;
+//             }
+//         }
+//     }
+// TODO
+// 1. Fork
+// 2. Child process: execvp
+// 3. Parent process: waitpid
+// 4. Handle input/output redirection
+// 5. Handle background process
+// 6. Handle pipe
+// 7. Handle error
+// 8. Handle exit
+// 9. Handle cd
+// }
+
+fn main() {
+    let mut input = String::new();
+    let current_dir = std::env::current_dir().unwrap();
+    loop {
+        print!("{}$ ", current_dir.display());
+        stdout().flush().unwrap();
+        stdin().read_line(&mut input).unwrap();
+
+        if input.trim_end() == "exit" {
+            break;
+        }
+
+        let expression = parse_to_expression(&input);
+        execute_expression(expression);
+        input.clear();
+    }
+    // print!("$ ");
+    // let _ = stdout().flush();
+    // stdin()
+    //     .read_line(&mut input)
+    //     .expect("Did not enter a correct string");
+    // let args: Expression = parseToExpression(&input);
+    // executeExpression(&args);
+}
